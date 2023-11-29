@@ -15,21 +15,28 @@
 % p(4) = k (population growth rate)
 % p(5) = e (rate of new infections from external sources)
 
-function [dydt] = SLIRmodel(t,y,p)
-    %assign parameters
-    beta = p(1);
-    mu_l = p(2);
-    mu_i = p(3);
-    k    = p(4);
-    e    = p(5);
+function [dydt] = SLIRmodel(t,y,p,beta)
+    %assign parameter
+    mu_l = p(1);
+    mu_i = p(2);
+    e    = p(3);
+    load EnvironmentalForcing.mat;
+    Ap = p(4);
+    day = p(5);
+    TE = -0.35968 + 0.10789.*T - 0.00214.*T.^2;
     %assign variables
     S = y(1);
     L = y(2);
     I = y(3);
     R = y(4);
     
-    dydt(1) = -beta*S*I+k;
-    dydt(2) = beta*S*I-mu_l*L+e;
-    dydt(3) = mu_l*L-mu_i*I;
-    dydt(4) = mu_i*I;
+
+    dydt(6) = (0.1724*Pb-.0000212*Pb^2)*TE; %dPb/dt
+    dydt(7) = (1.33*day)*TE;%dPl/dt
+    dydt(5) = dydt(6)+dydt(7);
+    dydt(1) = -beta*S*I+dydt(5)*(1/Ap); %dS/dt
+    dydt(2) = S*I-mu_l*L+e;%dL/dt
+    dydt(3) = mu_l*L-mu_i^-1*I;%dI/dt
+    dydt(4) = mu_i^-1*I;%dR/dt
+
 end
