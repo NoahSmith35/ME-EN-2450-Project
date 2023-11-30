@@ -37,5 +37,7 @@ beta = beta_max.* T_beta;
 
 for i = 1:length(T)
     p = [mu_L(i),mu_I,e,Ap,day];
-rk4(SLIRmodel3(i,y,p,beta(i)),tspan, y())
+    for j = 1:4
+    ansArray(j,i)=rk4(@dydt,tspan, y(j));
+    end
 end
