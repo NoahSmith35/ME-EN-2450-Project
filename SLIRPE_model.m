@@ -93,8 +93,7 @@ function [dydt] = SLIRPE_model(idx,y,e,mu_L,p)
     else
         %YOUR CODE GOES HERE for our F function
 
-        
-        Spore_prod = Gamma .* exp(alpha.*I .*A); 
+        Spore_prod = Gamma .* exp(alpha.*I .*A); % double check use of A or A final
         SPore_escape = F .* ((exp(kappa.*M + (xi))) ./ (eta.*(1 + exp(kappa.*M + (xi)))));
         
 dydt(8) = Spore_prod - Spore_escape;
