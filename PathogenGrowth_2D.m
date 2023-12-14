@@ -41,7 +41,7 @@
 % tspan (days to simulate array);
 % output: S,L,I,R,P,E,time (vector of simulation times), and B
 
-function [vine] = PathogenGrowth_2D(vine,beta_max,mu_L_target,mu_I,A,...
+function [vine,infects,infectsFound,tFound,cost] = PathogenGrowth_2D(vine,beta_max,mu_L_target,mu_I,A,...
     eta,kappa,xi,Gamma,alpha,T,U,V,tspan)
 
 %declare global variables
@@ -60,14 +60,18 @@ p{9} = kappa;     %release fraction scale factor
 p{10}= xi;       %release fraction offset
 p{11}= Gamma;    %spore production multiple
 p{12}= alpha;   %spore production 2nd factor
-
+cost = 0;
+findSwitch = 0;
+tFound = Inf;
 % declare function handles
 odefun = @(t,y,e,g) SLIRPE_model(t,y,e,g,p);
-
+checked = zeros(50,50);
 % loop over timesteps (starting at 2)
 for t=2:Nsteps
 
-    disp(['day=',num2str(tspan(t),'%.2f'),' infected plants=',int2str(sum([vine.IsInfect]))])
+%     if mod(t-1,24)==0
+        disp(['day=',num2str(tspan(t),'%.2f'),' infected plants=',int2str(sum([vine.IsInfect]))])
+%     end
     dt=tspan(t)-tspan(t-1); %timestep
 
     %update list of infected vines
@@ -80,8 +84,7 @@ for t=2:Nsteps
         Xplume = [vine.X]-vine(idx).X;
         Yplume = [vine.Y]-vine(idx).Y;
         
-        DepFlux = GaussianPlumeDep(Xplume,Yplume,p{6}(t),p{7}(t),...
-            vine(idx).S(t-1),vine(idx).F(t-1));
+        DepFlux = GaussianPlumeDep(Xplume,Yplume,p{6}(t),p{7}(t),vine(idx).S(t-1),vine(idx).F(t-1));
         NNaNInd = ~isnan(DepFlux);
         DepFlux_sum(NNaNInd) = DepFlux_sum(NNaNInd) + DepFlux(NNaNInd);
     end
@@ -114,7 +117,7 @@ for t=2:Nsteps
             DepFlux_sum_cnt = DepFlux_sum(cnt);
             vine_mu_L = vine(cnt).mu_L;
 
-             [y] = TimeInt(odefun,t,dt,y0,DepFlux_sum_cnt,vine_mu_L)
+             [y] = TimeInt(odefun,t,dt,y0,DepFlux_sum_cnt,vine_mu_L);
 
             
         
@@ -147,29 +150,150 @@ for t=2:Nsteps
     %%%        RECOMMENDED LOCATION FOR YOUR SCOUTING ROUTINE           %%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+    
+     if t>=48 && findSwitch ==0 && mod(t,2)==0
+        speed = .04+1/600;
+%         amt = 4;
+         cost = cost + 100;
+        [infects,infectsFound,checked] = Scouting(speed,vine,t,4,checked);
+        if (t-1)/24 > 10
+            cost = cost + 1000;
+        end
+        if infectsFound == 1 && findSwitch == 0
+            tFound = t;
+            disp('Infection Found')
+            return
+        end
+     end
 end
 
 end
 
 
 function [y] = TimeInt(odefun,t,dt,y0,DepFlux_sum_cnt,vine_mu_L)
-
-                Nsteps = length(t);
-                y = zeros(Nsteps, length(y0));
-                y(1, :) = y0;
-
-                % Time INT
-
-                for i = 2: Nsteps
-
-                    dy = odefun(t(i-1), y(i-1, :), DepFlux_sum, mu_L)
-
-                    % Use Euler Method 
-
-                    y(i, :) = y(i-1, :) + (dt * dy);
-
-
-                end
+    y1 = odefun(t-1,y0,DepFlux_sum_cnt,vine_mu_L);
+    y2 = odefun(t,y0+y1*dt,DepFlux_sum_cnt,vine_mu_L);
+    y = y0 + ((y2+y1)/2)*(dt);           
 end
             
+function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
+    global NpX NpY
+    infects = zeros(NpX,NpY);
+    infectsFound = 0;
+    DetectSize = (20*speed/10)^2/4*pi/5000;
+    distMax = speed*3600;
+    distUsed = 0;
+%     if opts == 1
+%         gridSize = floor(sqrt(Npnts));
+%         for i = 1:gridSize:NpX
+%             for j = 1:gridSize:NpY
+    if opts == 2
+        for a = 1:amt
+            currLoc = [0,0];
+            while distUsed < distMax && infectsFound ~= 1
+                RandSearch = randi(NpX*NpY);
+                %fprintf('day:%i (%i,%i)\n',round(t/24),vine(RandSearch).X+.5,vine(RandSearch).Y+.5)
+                distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2);
+                if distUsed > distMax
+                    break
+                end
+                if vine(RandSearch).I(t) >= DetectSize
+                    infects(vine(RandSearch).X+0.5,vine(RandSearch).Y+0.5) = 1;
+                    infectsFound = 1;
+                    return
+                end
+                currLoc = [vine(RandSearch).X,vine(RandSearch).Y];
+
+            end
+        end
+    end
+
+    if opts == 3
+        for a = 1:amt
+            corner = randi([1,4]);
+            switch(corner)
+                case 1
+                    currLoc = [0,0];
+                case 2
+                    currLoc = [0,50];
+                case 3 
+                    currLoc = [50,0];
+                case 4
+                    currLoc = [50,50];
+            end
+            while distUsed < distMax && infectsFound ~= 1
+                newrandx = randi([round(currLoc(1))-10, uptox(round(currLoc(1))+10)],"uint16");
+                newrandy = randi([round(currLoc(2))-10, uptoy(round(currLoc(2))+10)],"uint16");
+                while newrandy == 0 && newrandx == 0 
+                    newrandx = randi([round(currLoc(1))-10, uptox(round(currLoc(1))+10)],"uint16");
+                    newrandy = randi([round(currLoc(2))-10, uptoy(round(currLoc(2))+10)],"uint16");    
+                end
+                RandSearch = round(newrandx)+floor(newrandy)*50;
+                %fprintf('day:%i (%i,%i)\n',round(t/24),vine(RandSearch).X+.5,vine(RandSearch).Y+.5)
+                distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2);
+
+                if distUsed > distMax
+                    break
+                end
+                if vine(RandSearch).I(t) >= DetectSize
+                    infects(vine(RandSearch).X+0.5,vine(RandSearch).Y+0.5) = 1;
+                    infectsFound = 1;
+                    return
+                end
+                currLoc = [vine(RandSearch).X,vine(RandSearch).Y];
+            end
+        end
+    end
+    if opts == 4
+        t = (t-44)/2;
+        currLocInx = 1+(t-2)*3*50;
+        distUsed = .5;
+        adding = true; 
+        numits =1;
+        while distUsed<distMax
+            if mod(numits,50)==1
+                if adding==true
+                    currLocInx = currLocInx+49;
+                else
+                    currLocInx = currLocInx+51;
+                end
+                adding = not(adding);
+            end
+            
+            if vine(currLocInx).I(2*t+44) >= DetectSize
+                infects(vine(currLocInx).X+0.5,vine(currLocInx).Y+0.5) = 1;
+                infectsFound = 1;
+                return
+            end
+%             checked(vine(currLocInx).Y+0.5,vine(currLocInx).X+0.5) = 1;
+            checked(vine(currLocInx).X+0.5,vine(currLocInx).Y+0.5) = 1;
+            numits=numits+1;
+            distUsed = distUsed+1;
+            if adding == true
+                currLocInx = 1+currLocInx;
+            end
+            if adding == false
+                currLocInx = currLocInx-1;
+            end
+        end
+    end
+end
+
+function max = uptox(int)
+
+if int>50
+   max = 50;
+else
+   max = int;
+end
+
+end
+function max = uptoy(int)
+
+if int>=50
+   max = 49;
+else
+   max = int;
+end
+
+end

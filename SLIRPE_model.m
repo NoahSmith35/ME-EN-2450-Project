@@ -85,16 +85,15 @@ function [dydt] = SLIRPE_model(idx,y,e,mu_L,p)
     my = 1;
     u_s = 0.025;
     d_l = sqrt(S);
-    M = sqrt(U.^2 + V.^2);
-    sigma_y = sqrt(sigma_y0.^2 + my^2.*Windspd.^2);
-    dydt(7) = exp(-0.05.*Windspd).*(F./(2*pi.*sigma_y.*M)).*exp(-Winddir.^2./(2*sigma_y^2)).*(u_s.*d_l);
-    if(I==0)%spore production shouldn't start before infection (quirk of exponential curve fit)
+    sigma_y = sqrt(sigma_y0.^2 + my^2.*m_used.^2);
+    dydt(7) = exp(-0.05.*m_used).*(F./(2*pi.*sigma_y.*m_used)).*exp(-Winddir(idx).^2./(2*sigma_y.^2)).*(u_s.*d_l);
+    if(I==0)%spore oduction shouldn't start before infection (quirk of exponential curve fit)
         dydt(8) = 0;
     else
         %YOUR CODE GOES HERE for our F function
 
         Spore_prod = Gamma .* exp(alpha.*I .*A); % double check use of A or A final
-        Spore_escape = F .* ((exp(kappa.*M + (xi))) ./ (eta.*(1 + exp(kappa.*M + (xi)))));
+        Spore_escape = F .* ((exp(kappa.*m_used + (xi))) ./ (eta.*(1 + exp(kappa.*Winddir(idx) + (xi)))));
         
 dydt(8) = Spore_prod - Spore_escape;
     end
