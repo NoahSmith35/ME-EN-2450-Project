@@ -1,7 +1,7 @@
 % driver script for our 2 dimensional pathogen simulation for ME EN 2450
 % Fall 2023.
 %
-close all; clear all ;clc
+close all; clear ;clc
 %
 % load Envinronmental Forcing data (U,V,T,tspan)
 load EnvironmentalForcing.mat
@@ -38,6 +38,8 @@ Gamma = 1e-2;   %spore production from Calonnec et al 2009 approx scaled as surf
 alpha = 0.314/10000;  %spore production 2nd factor
 onlyScout = true; % Choose to stop the function  
 graphScout = false; % choose to graph the scouting routine movie
+makeMoive = false; % Choose to make the movie
+scoutingMethod = 3; % Pick scouting method | 1:Random search | 2: Modified random search | 3: grid search
 %%%%%%%%%%%%%%%%%% Initialize individual Plants (vines) %%%%%%%%%%%%%%%%%%%
 % Here we will use a structure (vine) to store all the different variables
 % to keep the association between variables and locations
@@ -73,7 +75,7 @@ vine(RandV).L(1) = 0.25^2/4*pi/A;
 % call the pathogen function
 tic
 [vine,infects,infectsFound,tFound,cost]=PathogenGrowth_2D(vine,beta_max,mu_L_min,mu_I,A,eta,kappa,xi,Gamma,...
-    alpha,T,U,V,tspan);
+    alpha,T,U,V,tspan,onlyScout,scoutingMethod);
 toc 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -112,33 +114,35 @@ hold off
 
 %INSERT YOUR CODE HERE to add plotting of other elements and optional
 %things like movies
-[infectY,infectX] = find(infects);
-foundTxt = sprintf('Infection found at (%i,%i)',infectX,infectY);
-disp(foundTxt)
-% if NpX == 50 && NpY == 50
-%     save("VineData.mat","vine")
-% end
-cdata = zeros(NpX,NpY,62);
-for i = 1:(NpX*NpY)
-    cdata(vine(i).X + 0.5,vine(i).Y + 0.5,:) = vine(i).I(1:24:1465);
+if makeMoive == true
+    [infectY,infectX] = find(infects);
+    foundTxt = sprintf('Infection found at (%i,%i)',infectX,infectY);
+    disp(foundTxt)
+    if saveVineData
+         save("VineData.mat","vine")
+    end
+    cdata = zeros(NpX,NpY,62);
+    for i = 1:(NpX*NpY)
+        cdata(vine(i).X + 0.5,vine(i).Y + 0.5,:) = vine(i).I(1:24:1465);
+    end
+    figure
+    axis tight manual
+    ax = gca;
+    ax.NextPlot = 'replaceChildren';
+    
+    M(62) = struct('cdata',[],'colormap',[]);
+    v = VideoWriter('heatmap_movie.avi');
+    v.FrameRate = 5;
+    open(v)
+    finalDay = tFound/24;
+    for mapDay = 1:finalDay
+        h = heatmap(cdata(:,:,mapDay+1),'CellLabelColor','none','GridVisible','off');
+        colormap(h,"parula")
+        txt = sprintf('Field on Day %d',mapDay);
+        title(txt)
+        drawnow
+        M(mapDay+1) = getframe(gcf);
+        writeVideo(v,M(mapDay+1));
+    end
+    close(v)
 end
-figure
-axis tight manual
-ax = gca;
-ax.NextPlot = 'replaceChildren';
-
-M(62) = struct('cdata',[],'colormap',[]);
-v = VideoWriter('heatmap_movie.avi');
-v.FrameRate = 5;
-open(v)
-finalDay = tFound/24;
-for mapDay = 1:finalDay
-    h = heatmap(cdata(:,:,mapDay+1),'CellLabelColor','none','GridVisible','off');
-    colormap(h,"parula")
-    txt = sprintf('Field on Day %d',mapDay);
-    title(txt)
-    drawnow
-    M(mapDay+1) = getframe(gcf);
-    writeVideo(v,M(mapDay+1));
-end
-close(v)

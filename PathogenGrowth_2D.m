@@ -42,7 +42,7 @@
 % output: S,L,I,R,P,E,time (vector of simulation times), and B
 
 function [vine,infects,infectsFound,tFound,cost] = PathogenGrowth_2D(vine,beta_max,mu_L_target,mu_I,A,...
-    eta,kappa,xi,Gamma,alpha,T,U,V,tspan)
+    eta,kappa,xi,Gamma,alpha,T,U,V,tspan,onlyScout,scoutingMethod)
 
 %declare global variables
 global NpX NpY Nsteps
@@ -55,17 +55,18 @@ p{4} = tspan;    %(time in days array)
 p{5} = A;        %(total plant surface area at reference time)
 p{6} = sqrt(U.^2+V.^2);  %windspeed
 p{7} = atand(V./U);      %wind direction
-p{8} = eta;       %release fraction scale factor
-p{9} = kappa;     %release fraction scale factor   
+p{8} = eta;      %release fraction scale factor
+p{9} = kappa;    %release fraction scale factor   
 p{10}= xi;       %release fraction offset
 p{11}= Gamma;    %spore production multiple
-p{12}= alpha;   %spore production 2nd factor
-cost = 0;
-findSwitch = 0;
-tFound = Inf;
+p{12}= alpha;    %spore production 2nd factor
+cost = 0;        %Intialize cost
+findSwitch = 0;  %if the disease has been found
+tFound = Inf;    %time the disease was found
+infectsFound = 0;
+infects = zeros(NpX,NpY); % the loction the disease was found 
 % declare function handles
 odefun = @(t,y,e,g) SLIRPE_model(t,y,e,g,p);
-checked = zeros(50,50);
 % loop over timesteps (starting at 2)
 for t=2:Nsteps
 
@@ -144,55 +145,65 @@ for t=2:Nsteps
             end
         end
     end
+    %% Scouting Routine
+    if scoutingMethod == 3 && findSwitch ==0
+        if t>=48 && mod(t,2)==0 % Starting on hour 48 we search with one drone every other hour
+            speed = .04+1/600;  % Speed needed to search exactly 150 plants
+            cost = cost + 100;  % each time one drone runs for one hour
+            [infects,infectsFound] = Scouting(speed,vine,t,scoutingMethod,1,infects);
+            if (t-1)/24 > 10 && mod(t,24)==0 % if we pass day 10 1000 dollars added per day
+                cost = cost + 1000;
+            end
 
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%        RECOMMENDED LOCATION FOR YOUR SCOUTING ROUTINE           %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-     if t>=48 && findSwitch ==0 && mod(t,2)==0
-        speed = .04+1/600;
-%         amt = 4;
-         cost = cost + 100;
-        [infects,infectsFound,checked] = Scouting(speed,vine,t,4,checked);
-        if (t-1)/24 > 10
-            cost = cost + 1000;
         end
-        if infectsFound == 1 && findSwitch == 0
-            tFound = t;
-            disp('Infection Found')
+    else 
+       if mod(t,24) == 0 
+            switch scoutingMethod % speed and number of drones determined from Scouting_Opt for each method
+                case 1 
+                    amt = 4;
+                    speed = .045;
+                case 2
+                    amt = 3;
+                    speed = .055;
+            end
+            [infects,infectsFound] = Scouting(speed,vine,t,scoutingMethod,amt,infects);
+            cost = cost + amt*100;
+            if (t-1)/24 > 10
+                cost = cost + 1000;
+            end
+       end
+    end
+    if infectsFound == 1 && findSwitch == 0 % the first time we find the infection we display it 
+        tFound = t;
+        disp('Infection Found')
+        if onlyScout 
             return
         end
-     end
-end
+    end   
 
 end
 
+end
 
+%% functions
 function [y] = TimeInt(odefun,t,dt,y0,DepFlux_sum_cnt,vine_mu_L)
     y1 = odefun(t-1,y0,DepFlux_sum_cnt,vine_mu_L);
     y2 = odefun(t,y0+y1*dt,DepFlux_sum_cnt,vine_mu_L);
     y = y0 + ((y2+y1)/2)*(dt);           
 end
-            
-function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
+
+function [infects,infectsFound] = Scouting(speed,vine,t,opts,amt,infects)
     global NpX NpY
-    infects = zeros(NpX,NpY);
     infectsFound = 0;
     DetectSize = (20*speed/10)^2/4*pi/5000;
     distMax = speed*3600;
     distUsed = 0;
-%     if opts == 1
-%         gridSize = floor(sqrt(Npnts));
-%         for i = 1:gridSize:NpX
-%             for j = 1:gridSize:NpY
-    if opts == 2
+    %% Random Search
+    if opts == 1
         for a = 1:amt
             currLoc = [0,0];
             while distUsed < distMax && infectsFound ~= 1
                 RandSearch = randi(NpX*NpY);
-                %fprintf('day:%i (%i,%i)\n',round(t/24),vine(RandSearch).X+.5,vine(RandSearch).Y+.5)
                 distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2);
                 if distUsed > distMax
                     break
@@ -207,8 +218,8 @@ function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
             end
         end
     end
-
-    if opts == 3
+    %% Modified Random Search
+    if opts == 2
         for a = 1:amt
             corner = randi([1,4]);
             switch(corner)
@@ -229,7 +240,6 @@ function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
                     newrandy = randi([round(currLoc(2))-10, uptoy(round(currLoc(2))+10)],"uint16");    
                 end
                 RandSearch = round(newrandx)+floor(newrandy)*50;
-                %fprintf('day:%i (%i,%i)\n',round(t/24),vine(RandSearch).X+.5,vine(RandSearch).Y+.5)
                 distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2);
 
                 if distUsed > distMax
@@ -244,7 +254,8 @@ function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
             end
         end
     end
-    if opts == 4
+    %% Grid Search
+    if opts == 3
         t = (t-44)/2;
         currLocInx = 1+(t-2)*3*50;
         distUsed = .5;
@@ -252,7 +263,7 @@ function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
         numits =1;
         while distUsed<distMax
             if mod(numits,50)==1
-                if adding==true
+                if adding
                     currLocInx = currLocInx+49;
                 else
                     currLocInx = currLocInx+51;
@@ -265,14 +276,11 @@ function [infects,infectsFound,checked] = Scouting(speed,vine,t,opts,checked)
                 infectsFound = 1;
                 return
             end
-%             checked(vine(currLocInx).Y+0.5,vine(currLocInx).X+0.5) = 1;
-            checked(vine(currLocInx).X+0.5,vine(currLocInx).Y+0.5) = 1;
             numits=numits+1;
             distUsed = distUsed+1;
-            if adding == true
+            if adding
                 currLocInx = 1+currLocInx;
-            end
-            if adding == false
+            else
                 currLocInx = currLocInx-1;
             end
         end
