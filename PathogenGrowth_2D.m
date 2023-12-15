@@ -187,12 +187,15 @@ end
 
 %% functions
 function [y] = TimeInt(odefun,t,dt,y0,DepFlux_sum_cnt,vine_mu_L)
+% trapizodal integration estimate
     y1 = odefun(t-1,y0,DepFlux_sum_cnt,vine_mu_L);
     y2 = odefun(t,y0+y1*dt,DepFlux_sum_cnt,vine_mu_L);
     y = y0 + ((y2+y1)/2)*(dt);           
 end
 
 function [infects,infectsFound] = Scouting(speed,vine,t,opts,amt,infects)
+%inputs-Speed of drone,Vine Data from the simulation, current time, Pick scouting method | 1:Random search | 2: Modified random search | 3: grid search , number of drones, empty 50x50 matrix
+%Outputs, 50x50 matrix of location of the infected plant, if the infection was located 
     global NpX NpY
     infectsFound = 0;
     DetectSize = (20*speed/10)^2/4*pi/5000;
@@ -201,19 +204,19 @@ function [infects,infectsFound] = Scouting(speed,vine,t,opts,amt,infects)
     %% Random Search
     if opts == 1
         for a = 1:amt
-            currLoc = [0,0];
+            currLoc = [0,0]; % each drone starts in the corner 
             while distUsed < distMax && infectsFound ~= 1
-                RandSearch = randi(NpX*NpY);
-                distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2);
-                if distUsed > distMax
+                RandSearch = randi(NpX*NpY); % picking next plant
+                distUsed = distUsed + sqrt((vine(RandSearch).X - currLoc(1))^2 + (vine(RandSearch).Y - currLoc(2))^2); % Calculating distance to next point and adding it to the total
+                if distUsed > distMax % verifying target is reachable
                     break
                 end
-                if vine(RandSearch).I(t) >= DetectSize
+                if vine(RandSearch).I(t) >= DetectSize % checking the current plant
                     infects(vine(RandSearch).X+0.5,vine(RandSearch).Y+0.5) = 1;
                     infectsFound = 1;
                     return
                 end
-                currLoc = [vine(RandSearch).X,vine(RandSearch).Y];
+                currLoc = [vine(RandSearch).X,vine(RandSearch).Y]; % setting current location 
 
             end
         end
@@ -256,7 +259,7 @@ function [infects,infectsFound] = Scouting(speed,vine,t,opts,amt,infects)
     end
     %% Grid Search
     if opts == 3
-        t = (t-44)/2;
+        t = (t-44)/2; 
         currLocInx = 1+(t-2)*3*50;
         distUsed = .5;
         adding = true; 
